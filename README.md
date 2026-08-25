@@ -74,6 +74,18 @@ nothing, nearly all are Type 3 fonts with no `/ToUnicode`: dvips bitmap fonts
 whose glyphs are called `a1` and `s32`, which no reader can turn back into
 letters.
 
+## The rest of the family
+
+[**reader**](https://github.com/go-pdfkit/reader) reads and writes the format ·
+[**ops**](https://github.com/go-pdfkit/ops) is the verbs and the `pdfops` command ·
+[**render**](https://github.com/go-pdfkit/render) turns a page into pixels ·
+[**pdffont**](https://github.com/go-pdfkit/pdffont) is what a document says about a font ·
+[**extract**](https://github.com/go-pdfkit/extract) reads a page back ·
+[**coedit**](https://github.com/go-pdfkit/coedit) is a PDF several people edit at once ·
+[**app**](https://github.com/go-pdfkit/app) is the browser workbench.
+
+Documentation for all of it: <https://go-pdfkit.github.io/docs/>
+
 ## Licence
 
 BSD-3-Clause.
