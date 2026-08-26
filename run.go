@@ -235,7 +235,25 @@ func (e *extractor) show(g *state, s []byte) {
 	if text.Len() == 0 && !unreadable {
 		return
 	}
-	scale := g.ctm.scale()
+	// How far a length in text space reaches on the page: the text matrix and
+	// the page's transform together, which is the same matrix the run's own
+	// position came through.
+	//
+	// Only the page's transform used to be counted here, and the text matrix
+	// was left out. A document is free to put the whole of its scale there —
+	// "/F1 1 Tf" and then a text matrix of ten is how TeX writes every PDF it
+	// has ever produced — and such a document reported its text as one point
+	// tall with letters half a point wide, while saying quite correctly where
+	// on the page each run began.
+	//
+	// Those are the two numbers a word break is decided by. A gap measured in
+	// points was being weighed against a space width ten times too small, so
+	// every ordinary kern between two letters looked like a space: "Original
+	// Domain" came back as "Or ig inal D omain". Across four thousand arXiv
+	// figures, 57% of the words a reader got back were one or two letters
+	// long. Nothing failed, and nothing was slow; the text was simply no
+	// longer text.
+	scale := start.scale()
 	e.runs = append(e.runs, Run{
 		Text:       text.String(),
 		X:          x,
