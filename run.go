@@ -21,6 +21,9 @@ type extractor struct {
 	// belong to the page rather than to the graphics state.
 	tm, tlm matrix
 	images  []Image
+	// wantPictures says whether anybody is going to read Image.Data. When
+	// nobody is, the filters are left undone.
+	wantPictures bool
 }
 
 // run walks a content stream.

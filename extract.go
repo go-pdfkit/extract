@@ -53,7 +53,7 @@ func Text(d *reader.Document, page int) (string, error) {
 
 // Runs is every piece of text on the page, in the order it was drawn.
 func Runs(d *reader.Document, page int) ([]Run, error) {
-	e, err := walk(d, page)
+	e, err := walk(d, page, false)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,15 @@ func Runs(d *reader.Document, page int) ([]Run, error) {
 // stays an error — a conversion that silently produces an empty document from
 // an unreadable page is worse than one that says it could not read it, and
 // go-pdfkit/latex relies on being told.
-func walk(d *reader.Document, page int) (*extractor, error) {
+//
+// wantPictures says whether the caller is going to look at the pictures. A
+// page's images have nothing to do with its text, and undoing their filters is
+// the most expensive thing on the page: one arXiv figure holds 378 MB of image
+// once decompressed, so asking that page what it *said* used to cost 1 094 MB
+// and 1.3 seconds spent inflating pictures the answer throws away. Where they
+// land is still noted either way, since that costs a matrix multiply; only the
+// bytes are left alone.
+func walk(d *reader.Document, page int, wantPictures bool) (*extractor, error) {
 	dec, err := d.PageContentDecoded(page)
 	if err != nil {
 		return nil, err
@@ -80,7 +88,7 @@ func walk(d *reader.Document, page int) (*extractor, error) {
 	content := dec.Data
 	p, _ := d.Page(page)
 	resources, _ := d.GetDict(p, "Resources")
-	e := &extractor{doc: d, fonts: map[int]*pdffont.Font{}}
+	e := &extractor{doc: d, fonts: map[int]*pdffont.Font{}, wantPictures: wantPictures}
 	e.run(content, resources, initialState(d, p), 0)
 	return e, nil
 }
