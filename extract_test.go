@@ -1,6 +1,8 @@
 package extract
 
 import (
+	"bytes"
+	"compress/zlib"
 	"strings"
 	"testing"
 
@@ -388,5 +390,79 @@ func TestAWordGapInAFontWithNoSpaceOfItsOwn(t *testing.T) {
 	})
 	if text, _ := Text(d, 1); text != "a b" {
 		t.Errorf("the page says %q", text)
+	}
+}
+
+// filteredPage builds a page whose content stream carries the filter and bytes
+// the test names, which pageWith does not allow: it writes the content plain.
+func filteredPage(t *testing.T, filter reader.Name, raw []byte) *reader.Document {
+	t.Helper()
+	w := reader.NewWriter("1.7")
+	pagesRef := w.Reserve()
+	page := w.Add(reader.Dict{
+		"Type": reader.Name("Page"), "Parent": pagesRef,
+		"MediaBox": reader.Array{reader.Integer(0), reader.Integer(0),
+			reader.Integer(200), reader.Integer(200)},
+		"Contents": w.Add(&reader.Stream{
+			Dict: reader.Dict{"Filter": filter}, Raw: raw}),
+		"Resources": reader.Dict{"Font": reader.Dict{"F1": w.Add(simpleFont(w))}},
+	})
+	w.Put(pagesRef, reader.Dict{"Type": reader.Name("Pages"),
+		"Kids": reader.Array{page}, "Count": reader.Integer(1)})
+	out, err := w.Finish(reader.Dict{"Root": w.Add(reader.Dict{
+		"Type": reader.Name("Catalog"), "Pages": pagesRef})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := reader.Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+func TestAPageThatDecodedPartOfTheWayIsReadThatFar(t *testing.T) {
+	// reader v0.6.0 keeps what a broken filter chain did produce. A page whose
+	// content inflates part of the way is read that far: 263 streams in 212 of
+	// the 1 633 real forms cannot be decoded cleanly, and half a page of text
+	// is worth more to somebody searching than none of it.
+	var buf bytes.Buffer
+	zw := zlib.NewWriter(&buf)
+	text := "BT /F1 12 Tf 10 100 Td (hello) Tj ET "
+	for i := 0; i < 300; i++ {
+		text += "BT /F1 12 Tf 10 100 Td (padding) Tj ET "
+	}
+	if _, err := zw.Write([]byte(text)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// The whole stream is 108 bytes and holds 301 pieces of text. Keeping 80
+	// of them inflates part of the way.
+	whole, err := Runs(filteredPage(t, "FlateDecode", buf.Bytes()), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs, err := Runs(filteredPage(t, "FlateDecode", buf.Bytes()[:80]), 1)
+	if err != nil {
+		t.Fatalf("a page that decoded part of the way came back as an error: %v", err)
+	}
+	switch {
+	case len(runs) == 0:
+		t.Error("nothing was read from a page that decoded part of the way")
+	case len(runs) >= len(whole):
+		t.Errorf("the cut stream gave %d runs and the whole one %d: nothing was cut",
+			len(runs), len(whole))
+	}
+}
+
+func TestAPageThatDecodedNothingIsStillAnError(t *testing.T) {
+	// The other side of the same rule, and the one go-pdfkit/latex relies on:
+	// a page whose content yields no bytes at all is reported rather than
+	// turned into an empty document.
+	d := filteredPage(t, "FlateDecode", []byte("not compressed at all"))
+	if _, err := Runs(d, 1); err == nil {
+		t.Error("a page whose content will not decode read without error")
 	}
 }

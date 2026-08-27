@@ -61,11 +61,23 @@ func Runs(d *reader.Document, page int) ([]Run, error) {
 }
 
 // walk reads a page's content stream once, keeping what it finds.
+//
+// A page whose content decoded only part of the way is read as far as it went:
+// 263 streams in 212 of the 1 633 real forms in the corpus cannot be decoded
+// cleanly, and half a page of text is worth more to somebody searching than
+// none of it. A page that decoded no bytes at all is a different answer and
+// stays an error — a conversion that silently produces an empty document from
+// an unreadable page is worse than one that says it could not read it, and
+// go-pdfkit/latex relies on being told.
 func walk(d *reader.Document, page int) (*extractor, error) {
-	content, err := d.PageContent(page)
+	dec, err := d.PageContentDecoded(page)
 	if err != nil {
 		return nil, err
 	}
+	if len(dec.Data) == 0 && dec.Cause != nil {
+		return nil, dec.Cause
+	}
+	content := dec.Data
 	p, _ := d.Page(page)
 	resources, _ := d.GetDict(p, "Resources")
 	e := &extractor{doc: d, fonts: map[int]*pdffont.Font{}}
