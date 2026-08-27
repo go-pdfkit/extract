@@ -42,7 +42,7 @@ type Image struct {
 // same picture placed twice comes back twice, since where it lands is part of
 // what is being asked for.
 func Images(d *reader.Document, page int) ([]Image, error) {
-	e, err := walk(d, page)
+	e, err := walk(d, page, true)
 	if err != nil {
 		return nil, err
 	}
@@ -117,11 +117,16 @@ func (e *extractor) noteImage(g *state, name string, dict reader.Dict, raw []byt
 		Dict:        dict,
 		Inline:      inline,
 	}
-	data, filter, err := reader.Decode(dict, raw, e.doc.Resolver())
-	if err == nil {
-		img.Data, img.Filter = data, filter
-	} else {
-		img.Data = raw
+	// A caller after the text is not after the pixels, and undoing a
+	// picture's filters to hand it nothing is the most expensive thing a page
+	// can be made to do.
+	if e.wantPictures {
+		data, filter, err := reader.Decode(dict, raw, e.doc.Resolver())
+		if err == nil {
+			img.Data, img.Filter = data, filter
+		} else {
+			img.Data = raw
+		}
 	}
 	e.images = append(e.images, img)
 }
