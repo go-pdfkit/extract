@@ -170,3 +170,152 @@ func TestWhatTheProgramCannotSay(t *testing.T) {
 		t.Error("the codes nothing could name did not say so")
 	}
 }
+
+// cmapFont is a font whose descriptor says symbolic and whose dictionary says
+// nothing else: no Encoding, no ToUnicode. Its own character map is then the
+// only thing left that knows what its codes are.
+func cmapFont(w *reader.Writer, specs []cmapSpec) reader.Dict {
+	ttf := fontWithCmaps(specs)
+	file := w.Add(&reader.Stream{Dict: reader.Dict{"Length1": reader.Integer(len(ttf))}, Raw: ttf})
+	return reader.Dict{
+		"Type": reader.Name("Font"), "Subtype": reader.Name("TrueType"),
+		"BaseFont": reader.Name("Test"),
+		"FontDescriptor": w.Add(reader.Dict{
+			"Type": reader.Name("FontDescriptor"), "FontName": reader.Name("Test"),
+			"Flags": reader.Integer(4), "FontFile2": file}),
+	}
+}
+
+// saysThrough reads one page drawn in a font carrying exactly these subtables.
+func saysThrough(t *testing.T, content string, specs []cmapSpec) string {
+	t.Helper()
+	d := pageWith(t, content, func(w *reader.Writer, res reader.Dict) {
+		res["Font"].(reader.Dict)["F2"] = w.Add(cmapFont(w, specs))
+	})
+	text, err := Text(d, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return text
+}
+
+func TestASymbolicTrueTypeFontReadThroughItsCharacterMap(t *testing.T) {
+	// The way in is the Microsoft Symbol subtable, whose codes conventionally
+	// live at 0xF000 + code; the way out is the Unicode subtable, inverted.
+	// Code 'A' reaches glyph 5 at 0xF041, and the font says glyph 5 is 'Z'.
+	text := saysThrough(t, "BT /F2 10 Tf 20 100 Td (A) Tj ET", []cmapSpec{
+		{3, 0, map[rune]uint16{0xF041: 5}},
+		{3, 1, map[rune]uint16{'Z': 5}},
+	})
+	if text != "Z" {
+		t.Errorf("the page says %q, want %q", text, "Z")
+	}
+}
+
+func TestACodeAddressedWithoutTheSymbolOffset(t *testing.T) {
+	// A symbol subtable written at the raw code rather than at 0xF000 + code
+	// is tried first, which is the order poppler uses.
+	text := saysThrough(t, "BT /F2 10 Tf 20 100 Td (B) Tj ET", []cmapSpec{
+		{3, 0, map[rune]uint16{'B': 7}},
+		{3, 1, map[rune]uint16{'W': 7}},
+	})
+	if text != "W" {
+		t.Errorf("the page says %q, want %q", text, "W")
+	}
+}
+
+func TestAFontAddressedThroughItsMacintoshRomanMap(t *testing.T) {
+	// With no Microsoft Symbol subtable the Macintosh Roman one is the way in.
+	// Platform 0 serves as the way out just as Microsoft Unicode does.
+	text := saysThrough(t, "BT /F2 10 Tf 20 100 Td (A) Tj ET", []cmapSpec{
+		{1, 0, map[rune]uint16{'A': 6}},
+		{0, 3, map[rune]uint16{'Q': 6}},
+	})
+	if text != "Q" {
+		t.Errorf("the page says %q, want %q", text, "Q")
+	}
+}
+
+func TestTheFirstSubtableOfAKindIsTheOneTaken(t *testing.T) {
+	// A font that repeats a kind of subtable means the first of them.
+	text := saysThrough(t, "BT /F2 10 Tf 20 100 Td (A) Tj ET", []cmapSpec{
+		{3, 0, map[rune]uint16{0xF041: 5}},
+		{3, 0, map[rune]uint16{0xF041: 8}},
+		{1, 0, map[rune]uint16{'A': 8}},
+		{1, 0, map[rune]uint16{'A': 9}},
+		{3, 1, map[rune]uint16{'Z': 5}},
+		{3, 10, map[rune]uint16{'Y': 5}},
+	})
+	if text != "Z" {
+		t.Errorf("the page says %q, want %q", text, "Z")
+	}
+}
+
+func TestWhatTheCharacterMapRouteRefusesToSay(t *testing.T) {
+	// Every way this can honestly come up empty. A guess would be exactly the
+	// wrong letter the symbolic guard exists to refuse, so it says nothing.
+	cases := []struct {
+		why   string
+		specs []cmapSpec
+	}{
+		{"no way out: nothing says which character a glyph is", []cmapSpec{
+			{3, 0, map[rune]uint16{0xF041: 5}},
+		}},
+		{"no way in: the font is not addressed by its own codes", []cmapSpec{
+			{3, 1, map[rune]uint16{'A': 5}},
+		}},
+		{"no subtable of any kind this route knows", []cmapSpec{
+			{7, 7, map[rune]uint16{'A': 5}},
+		}},
+		{"the code reaches no glyph, at either address", []cmapSpec{
+			{3, 0, map[rune]uint16{0xF042: 5}},
+			{3, 1, map[rune]uint16{'Z': 5}},
+		}},
+		{"no code in the Unicode map reaches that glyph", []cmapSpec{
+			{1, 0, map[rune]uint16{'A': 9}},
+			{3, 1, map[rune]uint16{'Z': 5}},
+		}},
+		{"the glyph is a private-use character, which nothing can read", []cmapSpec{
+			{1, 0, map[rune]uint16{'A': 5}},
+			{3, 1, map[rune]uint16{0xE000: 5}},
+		}},
+		{"the glyph is a control character, which a page does not say", []cmapSpec{
+			{1, 0, map[rune]uint16{'A': 5}},
+			{3, 1, map[rune]uint16{0x0B: 5}},
+		}},
+		{"the glyph is a C1 control character", []cmapSpec{
+			{1, 0, map[rune]uint16{'A': 5}},
+			{3, 1, map[rune]uint16{0x85: 5}},
+		}},
+	}
+	for _, c := range cases {
+		if text := saysThrough(t, "BT /F2 10 Tf 20 100 Td (A) Tj ET", c.specs); text != "" {
+			t.Errorf("%s: the page says %q, want nothing", c.why, text)
+		}
+	}
+}
+
+func TestWhichCharactersAreWorthReporting(t *testing.T) {
+	// A format-4 subtable cannot reach beyond the basic plane, so the high
+	// private-use planes are checked here rather than through a whole page.
+	cases := map[rune]bool{
+		'A':      true,
+		' ':      true,
+		0x00:     false, // NUL
+		0x1F:     false, // a C0 control
+		0x7F:     false, // delete
+		0x85:     false, // a C1 control
+		0xA0:     true,  // no-break space, the first character past them
+		0xE000:   false, // private use
+		0xF8FF:   false, // private use, last
+		0xF900:   true,  // a compatibility ideograph, just past it
+		0x1F600:  true,  // an astral character a font may really mean
+		0xF0000:  false, // supplementary private use area A
+		0x10FFFF: false, // supplementary private use area B
+	}
+	for r, want := range cases {
+		if got := readableRune(r); got != want {
+			t.Errorf("readableRune(%#x) = %v want %v", r, got, want)
+		}
+	}
+}
