@@ -8,4 +8,4 @@ require (
 	github.com/go-pdfkit/reader v0.6.0
 )
 
-require github.com/go-opentype/fonts v0.9.0
+require github.com/go-opentype/fonts v0.10.0
