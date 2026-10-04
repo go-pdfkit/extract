@@ -1,11 +1,10 @@
 module github.com/go-pdfkit/extract
 
-go 1.26.4
+go 1.27.1
 
 require (
+	github.com/go-opentype/fonts v0.10.0
 	github.com/go-opentype/opentype v0.13.0
 	github.com/go-pdfkit/pdffont v0.3.1
 	github.com/go-pdfkit/reader v0.6.0
 )
-
-require github.com/go-opentype/fonts v0.10.0
