@@ -12,6 +12,7 @@ the images it places.
 text, err := extract.Text(doc, 1)     // the page as words, lines put back together
 runs, err := extract.Runs(doc, 1)     // every piece, with its place and its size
 imgs, err := extract.Images(doc, 1)   // every picture, and where it lands
+tabs, err := extract.Tables(doc, 1)   // the grids its text lines up into
 ```
 
 Pure Go, no C. It builds for `GOOS=js/wasm` and every architecture the fleet
@@ -48,6 +49,54 @@ A JPEG comes out as a JPEG: re-encoding it would lose something for nothing.
 Turning the other kinds into pixels means reading their colour space, which is
 [`render`](https://github.com/go-pdfkit/render)'s work rather than this
 package's.
+
+## Tables
+
+A page holds no table. It holds text put at places, and a table is what a
+reader sees when those places line up — so `Tables` reports an **inference**,
+and there is nothing in the file to check it against.
+
+A column boundary is a stretch of the page that **every row of the table
+leaves empty**. The first line of a block proposes its own gaps, each line
+after it takes away whatever it draws in them, and a line that leaves nothing
+closes the block and begins the next. That is the one decision everything else
+follows from, and it is **subtraction** rather than the intersection of the
+lines' gaps, which is where this started:
+
+| | |
+|---|---|
+| a cell whose text **wraps** | leaves a line with one piece of text on it and so no gaps of its own. Intersecting with nothing ends the table, and a four-row table with one wrapped cell came back as **two tables of two rows**. A wrapped line draws nothing in the boundary beside it, so subtracting keeps it. |
+
+Three things are not columns, and each one was found by running this over real
+documents rather than over a fixture:
+
+| | |
+|---|---|
+| a **bullet** | a bulleted list *is* a two-column grid. What tells them apart is that one column says the same thing wherever it says anything — and a column like that distinguishes nothing. A mark of one or two characters, repeated, is dropped; `CNRS` repeated down a column is data and is kept. |
+| a column **nothing was drawn in** | that is a stretch of page nothing was drawn in, which is what a boundary already is. A run of nothing but spaces splits a boundary in two and leaves an empty column between the halves. |
+| a line **far below** the row above | a page number sits in the left-hand column and draws nothing in any boundary, which is exactly what a row of a table does. What says it is not one is the distance: more than three times the row's own text size. |
+
+Measured on one 213-page document, as each of those went in:
+
+```
+588 tables, 1841 rows   gaps the rows share
+213 tables, 1631 rows   + boundaries the rows leave empty (wrapped cells)
+ 83 tables,  268 rows    + a repeated mark is a bullet
+ 40 tables,  120 rows     + an empty column is not a column, and a page
+                            number is not a row
+```
+
+The forty are the document's `Code` / `Intitulé` pairs, one per job
+description, with their second cells wrapped. A 3-page prose report in the same
+run reports **none**, which is the control: a detector that cannot say no to a
+paragraph says yes to every page there is.
+
+⛔ **What it still gets wrong.** A page laid out in two columns of prose is a
+grid too — the gutter is a stretch every line leaves empty. What saves the
+ordinary case is that prose does not stay out of its gutter for long, since one
+full-width line closes the block. And ruled lines are not read at all: this is
+the *text* strategy, the one a bordered table does not need, and a table whose
+columns are held apart by rules rather than by whitespace is not found by it.
 
 ## How it is checked
 

@@ -68,6 +68,11 @@ func FuzzExtract(f *testing.F) {
 			}
 			_, _ = extract.Text(d, i)
 			_, _ = extract.Images(d, i)
+			// Tables works over the same runs, but what it does with them is
+			// compare coordinates the document chose: a page is free to say a
+			// word sits at minus infinity, and a comparison is the one
+			// operation that will not complain about it.
+			_, _ = extract.Tables(d, i)
 		}
 		if el := time.Since(start); el > 5*time.Second {
 			t.Fatalf("%d bytes took %s over %d pages", len(b), el, n)
