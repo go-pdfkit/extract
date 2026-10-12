@@ -563,3 +563,36 @@ func type3Page(t *testing.T, size int, content string) *reader.Document {
 		})
 	})
 }
+
+// ⛔ Lines and Join are exported so that the rule is the SAME rule. The
+// control is that they agree with Assemble, which is what the rest of the
+// fleet already reads a page with: if the two could disagree, a caller reading
+// structure out of a page would be reading a different page from the one
+// Text reports.
+func TestLinesAndJoinAgreeWithAssemble(t *testing.T) {
+	d := pageWith(t, strings.Join([]string{
+		"BT /F1 10 Tf 20 150 Td (Name) Tj 40 0 Td (Age) Tj ET",
+		"BT /F1 10 Tf 20 130 Td (Ada) Tj 40 0 Td (36) Tj ET",
+		"BT /F1 10 Tf 20 110 Td (one two) Tj ET",
+	}, "\n"), nil)
+	runs, err := Runs(d, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := Lines(runs)
+	if len(lines) != 3 {
+		t.Fatalf("%d lines, want 3", len(lines))
+	}
+	var joined []string
+	for _, line := range lines {
+		joined = append(joined, Join(line))
+	}
+	if got, want := strings.Join(joined, "\n"), Assemble(runs); got != want {
+		t.Errorf("Lines+Join read\n%q\nAssemble read\n%q", got, want)
+	}
+	// And the pieces are in reading order, which is what a caller walking
+	// them depends on.
+	if Join(lines[0]) != "Name Age" {
+		t.Errorf("the first line reads %q", Join(lines[0]))
+	}
+}

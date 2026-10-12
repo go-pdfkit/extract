@@ -13,7 +13,17 @@ text, err := extract.Text(doc, 1)     // the page as words, lines put back toget
 runs, err := extract.Runs(doc, 1)     // every piece, with its place and its size
 imgs, err := extract.Images(doc, 1)   // every picture, and where it lands
 tabs, err := extract.Tables(doc, 1)   // the grids its text lines up into
+
+lines := extract.Lines(runs)          // the runs gathered into their lines
+s     := extract.Join(lines[0])       // one line's pieces, spaced as words
 ```
+
+`Lines` and `Join` are exported because the rule has to be the **same** rule:
+`Text` uses them to put a page's text back together, and anything reading
+structure out of a page — where a paragraph ends, which line is a heading, as
+[`document`](https://github.com/go-pdfkit/document) does — has to agree with it
+line for line, or the two disagree about what the page says. A test asserts
+that agreement rather than trusting it.
 
 Pure Go, no C. It builds for `GOOS=js/wasm` and every architecture the fleet
 targets.
