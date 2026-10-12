@@ -174,3 +174,19 @@ func wantsSpace(prev, next Run, gap float64) bool {
 	}
 	return gap > space*0.3
 }
+
+// Lines gathers runs into the lines they were drawn on, down the page and then
+// left to right within each line. A line is allowed to wobble by a fraction of
+// its own height, which is what a superscript does.
+//
+// It is exported because the rule has to be the SAME rule: [Assemble] uses it
+// to put a page's text back together, and anything that reads structure out of
+// a page — where a paragraph ends, which line is a heading — has to agree with
+// it line for line or the two disagree about what the page says.
+func Lines(runs []Run) [][]Run { return groupIntoLines(runs) }
+
+// Join puts one line's pieces back together, with a space wherever the gap
+// between two of them is wide enough to be one and nothing where it is only
+// kerning. It is [Assemble] for a single line, and exported for the same
+// reason [Lines] is.
+func Join(line []Run) string { return joinLine(line) }
