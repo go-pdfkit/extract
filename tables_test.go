@@ -232,7 +232,50 @@ func TestABulletedListIsNotATable(t *testing.T) {
 	}
 }
 
-// The mark has to be a MARK. A first column that repeats a word is a column
+// ⛔ A MARK, not the same mark twice. Insisting on one repeated mark read
+// "• • - -" as a table of four rows, because the bullets were not all the
+// same character — and a reader sees two lists there.
+func TestTwoDifferentMarksAreStillMarks(t *testing.T) {
+	d := pageWith(t, strings.Join([]string{
+		"BT /F1 10 Tf 20 150 Td (\225) Tj 40 0 Td (conduct the project) Tj ET",
+		"BT /F1 10 Tf 20 130 Td (\225) Tj 40 0 Td (inform the trustees) Tj ET",
+		"BT /F1 10 Tf 20 110 Td (-) Tj 40 0 Td (federate the staff) Tj ET",
+		"BT /F1 10 Tf 20 90 Td (-) Tj 40 0 Td (and animate it) Tj ET",
+	}, "\n"), nil)
+	tables, _ := Tables(d, 1)
+	if len(tables) != 0 {
+		t.Errorf("two kinds of bullet came back as %d table(s): %+v", len(tables), tables)
+	}
+}
+
+// ⛔ A letter or a digit is information, which is what keeps a real table. A
+// numbering somebody may want is not an ornament, and a table of years is
+// nothing but digits.
+func TestAFirstColumnOfLabelsOrNumbersIsStillAColumn(t *testing.T) {
+	for _, first := range []struct{ a, b string }{
+		{"A", "B"},   // labels
+		{"1.", "2."}, // a numbering
+		{"90", "91"}, // years
+		// Three characters is not short. A mark is one or two; anything
+		// longer was drawn to be read.
+		{"---", "---"},
+	} {
+		d := pageWith(t, strings.Join([]string{
+			"BT /F1 10 Tf 20 150 Td (" + first.a + ") Tj 40 0 Td (one) Tj ET",
+			"BT /F1 10 Tf 20 130 Td (" + first.b + ") Tj 40 0 Td (two) Tj ET",
+		}, "\n"), nil)
+		tables, _ := Tables(d, 1)
+		if len(tables) != 1 {
+			t.Fatalf("%q/%q: %d tables, want 1: %+v", first.a, first.b, len(tables), tables)
+		}
+		want := [][]string{{first.a, "one"}, {first.b, "two"}}
+		if !reflect.DeepEqual(tables[0].Rows, want) {
+			t.Errorf("%q/%q: the table reads %q, want %q", first.a, first.b, tables[0].Rows, want)
+		}
+	}
+}
+
+// The mark has to be SHORT. A first column that repeats a word is a column
 // that repeats a word, and throwing it away would throw away the data.
 func TestAFirstColumnThatRepeatsAWordIsStillAColumn(t *testing.T) {
 	d := pageWith(t, strings.Join([]string{
