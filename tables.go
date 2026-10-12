@@ -3,6 +3,7 @@ package extract
 import (
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/go-pdfkit/reader"
 )
@@ -356,41 +357,59 @@ func dropEmptyColumns(rows [][]string) [][]string {
 	return out
 }
 
-// markerColumn reports whether the first column is a list's bullet rather than
-// data: one short mark, the same one wherever it appears, and nothing else.
+// markerColumn reports whether the first column holds a list's bullets rather
+// than data: short marks, and nothing that is a word or a number.
 //
 // ⛔ Measured, on a 213-page document of the author's: 588 "tables" of two
 // columns, and the first column of nearly all of them held "•" or U+F0A7. A
 // bulleted list IS a two-column grid, and no amount of looking at the
-// alignment will say otherwise — the thing that distinguishes it is that one
-// of its columns says the same thing wherever it says anything, and a column
-// like that distinguishes nothing. Dropping it leaves a list with one column,
-// which is not a table, and leaves a real table with a repeated mark in it one
-// column shorter and no worse informed.
+// alignment will say otherwise. What distinguishes it is that one of its
+// columns holds no DATA — a mark of one or two characters with no letter and
+// no digit in it is an ornament, and dropping it leaves a list with one
+// column, which is not a table.
 //
-// ⛔ The empty cells are why this is not simply "every row says the same": a
+// ⛔ A MARK, not the same mark twice. Insisting on one repeated mark read
+// "• • - -" as a table of four rows, because the bullets were not all the
+// same character — and a reader sees two lists there. The question is whether
+// the column carries information, and `-` carries exactly as little as `•`.
+//
+// ⛔ A letter or a digit is information, which is what keeps a real table.
+// `A` and `B` down a first column are labels, `1.` and `2.` are a numbering
+// somebody may want, and `1990` is a date. Taking those would be deciding
+// that a table of years is a list.
+//
+// ⛔ The empty cells are why this is not simply "every row holds one": a
 // bullet's text wraps, and the lines it wraps onto have no bullet of their
 // own. Insisting on every row let the wrapped lists back in — which is how
 // this read as a fix while a document of nothing but bullet lists still came
 // back as fourteen rows of table.
 func markerColumn(rows [][]string) bool {
-	mark := ""
 	for _, row := range rows {
-		switch {
-		case row[0] == "":
+		if row[0] == "" {
 			continue
-		case mark == "":
-			mark = row[0]
-			if len([]rune(mark)) > markerRunes {
-				return false
-			}
-		case row[0] != mark:
+		}
+		if !isMark(row[0]) {
 			return false
 		}
 	}
-	// mark is never still empty here: [dropEmptyColumns] has already taken
-	// away the columns nothing was drawn in, so the first column has something
-	// in it somewhere.
+	// Reaching here means every cell of the column was empty or a mark, and
+	// they cannot all have been empty: [dropEmptyColumns] has already taken
+	// away the columns nothing was drawn in. So at least one was a mark, and
+	// there is no "found nothing" case to report.
+	return true
+}
+
+// isMark reports whether a cell is an ornament rather than data.
+func isMark(cell string) bool {
+	runes := []rune(cell)
+	if len(runes) == 0 || len(runes) > markerRunes {
+		return false
+	}
+	for _, r := range runes {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return false
+		}
+	}
 	return true
 }
 
