@@ -88,7 +88,27 @@ func TablesWithOptions(d *reader.Document, page int, o TableOptions) ([]Table, e
 	if err != nil {
 		return nil, err
 	}
-	return tablesIn(runs, page, o.withDefaults()), nil
+	return TablesInRuns(runs, page, o), nil
+}
+
+// TablesInRuns is [TablesWithOptions] over runs a caller chose, and page is
+// only the number it will put in each [Table.Page].
+//
+// ⛔ It exists so that a caller who knows something this does not can take
+// lines OUT before asking. A numbered heading above a table is the case that
+// made it necessary: "2. Vue d'ensemble" leaves a gap after its number, the
+// table below it leaves that same gap empty on every row, so the heading and
+// the table became ONE two-column table — and the real four-column table
+// under it was lost, because the heading's own text reached across every one
+// of its boundaries.
+//
+// Nothing in the alignment says that line is a heading. Its SIZE says so, and
+// what counts as a heading size is a property of the whole document, which is
+// [go-pdfkit/document]'s business and not this package's.
+//
+// [go-pdfkit/document]: https://pkg.go.dev/github.com/go-pdfkit/document
+func TablesInRuns(runs []Run, page int, o TableOptions) []Table {
+	return tablesIn(runs, page, o.withDefaults())
 }
 
 // withDefaults fills in the fields left at zero.

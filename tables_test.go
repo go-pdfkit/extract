@@ -639,3 +639,58 @@ func TestLinesAndJoinAgreeWithAssemble(t *testing.T) {
 		t.Errorf("the first line reads %q", Join(lines[0]))
 	}
 }
+
+// ⛔ THE CASE THAT MADE TablesInRuns NECESSARY. A numbered heading leaves a gap
+// after its number; the table below it leaves that same gap empty on every
+// row; so the two become ONE two-column table, and the real four-column table
+// is lost because the heading's own text reaches across every boundary of it.
+//
+// Nothing in the alignment says that line is a heading — its SIZE does, and
+// what counts as a heading size is a property of the whole document. So the
+// caller who knows takes the line out and asks again.
+func TestAHeadingAboveATableSwallowsIt(t *testing.T) {
+	d := pageWith(t, strings.Join([]string{
+		// "2." at 20, its text at 40 and running to 170.
+		"BT /F1 12 Tf 20 180 Td (2.) Tj 20 0 Td (Vue d'ensemble technique) Tj ET",
+		"BT /F1 10 Tf 40 160 Td (Name) Tj 60 0 Td (Age) Tj 60 0 Td (City) Tj ET",
+		"BT /F1 10 Tf 40 145 Td (Ada) Tj 60 0 Td (36) Tj 60 0 Td (Caen) Tj ET",
+		"BT /F1 10 Tf 40 130 Td (Bob) Tj 60 0 Td (41) Tj 60 0 Td (Lyon) Tj ET",
+	}, "\n"), nil)
+
+	// Asked about the page, the heading is in and the table is two columns of
+	// nothing useful.
+	whole, err := Tables(d, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(whole) != 1 {
+		t.Fatalf("%d tables, want 1: %+v", len(whole), whole)
+	}
+	if n := len(whole[0].Rows[0]); n != 2 {
+		t.Errorf("%d columns with the heading in, want 2 — the defect: %q", n, whole[0].Rows)
+	}
+
+	// Asked about the runs below it, the real table comes back.
+	runs, err := Runs(d, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var below []Run
+	for _, r := range runs {
+		if r.Size < 12 {
+			below = append(below, r)
+		}
+	}
+	got := TablesInRuns(below, 1, TableOptions{})
+	if len(got) != 1 {
+		t.Fatalf("%d tables without the heading, want 1: %+v", len(got), got)
+	}
+	want := [][]string{{"Name", "Age", "City"}, {"Ada", "36", "Caen"}, {"Bob", "41", "Lyon"}}
+	if !reflect.DeepEqual(got[0].Rows, want) {
+		t.Errorf("without the heading the table reads %q, want %q", got[0].Rows, want)
+	}
+	// And the page number is the caller's to say, since runs do not carry one.
+	if got[0].Page != 1 {
+		t.Errorf("the table says it is on page %d", got[0].Page)
+	}
+}
