@@ -52,6 +52,43 @@ Text drawn in the mode that puts no ink on the page — how a scanner writes
 what it read underneath the picture it read it from — is returned and marked
 `Invisible`.
 
+## Where a run came from, so a page can be edited
+
+`Run.Op` is the byte range of the operation that drew the run, in the content
+stream it was scanned from. It is there so a caller can **change** a page and
+not only read it: a redaction has to cut the glyphs inside a region out of the
+stream, and *which* glyphs are inside is precisely what this package already
+works out — the text matrix, `Td`/`TD`/`Tm`/`T*`, `Tc`/`Tw`/`Tz`, the font
+metrics. The only thing missing was where to cut.
+
+The alternative was for every caller to pair runs with operators by counting
+them, which does not survive a form, invisible text, or an operator that draws
+nothing — and gets the cut wrong in a way that no test catches, because both
+sides of the comparison move together.
+
+Two things it says that a caller must act on:
+
+- ⛔ **Several runs can share one span.** A `TJ` array shows several strings
+  with a single operator, so being rid of one piece means **rewriting** the
+  span, not deleting it. Two runs with equal `Op` are two pieces of one
+  operation, and deleting the span would take the other away too.
+- ⛔ **`InForm` means the span is not the page's.** A run drawn from inside a
+  Form XObject has its offsets in *that* stream. Cutting the page there would
+  cut somewhere else entirely, and an XObject is shared, so editing it to
+  change one page changes every page that draws it. A caller editing a page
+  must refuse such a run rather than guess — the shape
+  [`ops.Doc.RecolourText`](https://github.com/go-pdfkit/ops) already has, where
+  `UnreachedText` counts what it could not reach.
+
+The span covers the operands as well as the operator, so removing one is one
+cut, and the text that stays does not move:
+
+```go
+runs, _ := extract.Runs(doc, 1)
+cut := content[:runs[1].Op.From] + content[runs[1].Op.To:]
+// the page still draws runs[0], in the same place, and no longer draws runs[1]
+```
+
 ## Images
 
 A picture comes back as the file holds it, with the box it covers on the page.

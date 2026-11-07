@@ -39,7 +39,43 @@ type Run struct {
 	// characters they were: the font carried no map and named its glyphs
 	// after numbers. What Text holds is then only the part that could be read.
 	Unreadable bool
+	// Op is where the operation that drew this run sits in the content stream
+	// it was scanned from, so a caller can EDIT the page and not only read it:
+	// a redaction has to cut the glyphs inside a region out of the stream, and
+	// deciding which glyphs those are is what this package already does.
+	//
+	// ⛔ SEVERAL RUNS CAN SHARE ONE SPAN. A TJ array shows several strings with
+	// a single operator, so a caller that wants to be rid of one of them must
+	// REWRITE the span, not delete it — two runs with equal Op are two pieces
+	// of one operation, and deleting the span would take the other away too.
+	//
+	// ⛔ AND THE SPAN IS INTO THE STREAM THAT DREW THE RUN, which is the page's
+	// own content only when InForm is false. See InForm.
+	Op Span
+	// InForm reports a run drawn from inside a Form XObject rather than from
+	// the page's own content stream.
+	//
+	// ⛔ ITS Op THEREFORE DOES NOT INDEX THE PAGE. Cutting the page's bytes at
+	// those offsets would cut somewhere else entirely — and an XObject is
+	// SHARED, so editing it to change one page changes every page that draws
+	// it. A caller that edits a page must refuse such a run rather than guess,
+	// which is the shape ops.Doc.RecolourText already has: it counts the text
+	// it could not reach and says so.
+	InForm bool
 }
+
+// A Span is a byte range in a content stream: From is the first byte of an
+// operation's first operand — or of the operator itself when it has none — and
+// To is just past the operator, as [reader.Operation] reports them.
+//
+// The zero Span means "nowhere", which is what a run carries when nothing was
+// scanned for it.
+type Span struct {
+	From, To int
+}
+
+// Empty says whether a span points at nothing.
+func (s Span) Empty() bool { return s.To <= s.From }
 
 // Text is everything the page says, in reading order, with the lines put back
 // together.

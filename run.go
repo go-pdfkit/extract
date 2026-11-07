@@ -24,6 +24,13 @@ type extractor struct {
 	// wantPictures says whether anybody is going to read Image.Data. When
 	// nobody is, the filters are left undone.
 	wantPictures bool
+	// op is where the operation being walked sits in the stream being walked,
+	// and depth how many forms deep that stream is. Both are set at the top of
+	// every iteration of the walk, which is also what restores them: a form
+	// drawn by a Do runs the walk again with its own stream and its own depth,
+	// and the next operation of the outer stream sets them back.
+	op    Span
+	depth int
 }
 
 // run walks a content stream.
@@ -45,6 +52,7 @@ func (e *extractor) run(content []byte, resources reader.Dict, g state, depth in
 			break
 		}
 		n := numbers(op.Operands)
+		e.op, e.depth = Span{From: op.Start, To: op.End}, depth
 		switch op.Operator {
 		case "q":
 			stack = append(stack, g)
@@ -264,6 +272,8 @@ func (e *extractor) show(g *state, s []byte) {
 		Space:      f.Width(' ') * g.text.size * g.text.scale * scale,
 		Invisible:  g.text.mode == 3,
 		Unreadable: unreadable,
+		Op:         e.op,
+		InForm:     e.depth > 0,
 	})
 }
 
