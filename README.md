@@ -97,6 +97,17 @@ Turning the other kinds into pixels means reading their colour space, which is
 [`render`](https://github.com/go-pdfkit/render)'s work rather than this
 package's.
 
+⛔ **`Matrix` is the transform it was drawn with**, and the box is not enough for
+every caller. The box a turned picture covers looks exactly like the box an
+upright one covers, so a caller that must map a region of the *page* into the
+picture's own *samples* — a redaction destroying the pixels under it, which ISO
+32000-1 §12.5.6.23 requires rather than a mask over them — would destroy more of
+a turned picture than was asked for, and removing too much is its own betrayal.
+`b` and `c` are zero for an upright picture (a flip keeps them zero), so the
+matrix is also how such a caller refuses the ones it cannot do by name. For a
+picture inside a form it is the whole chain: the page's transform, the form's
+`/Matrix`, and the one in force where the `Do` is.
+
 ## Tables
 
 A page holds no table. It holds text put at places, and a table is what a
