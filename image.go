@@ -23,6 +23,19 @@ type Image struct {
 	// turned or skewed by the page still reports the box it covers.
 	X, Y                    float64
 	DrawnWidth, DrawnHeight float64
+	// Matrix is the transform in force where the picture was drawn, as
+	// a b c d e f: it maps the unit square the picture occupies onto the page,
+	// so (0,0) is its bottom left corner and (1,1) its top right.
+	//
+	// ⛔ THE BOX ABOVE CANNOT TELL A TURNED PICTURE FROM A STRAIGHT ONE, and
+	// some callers must. A redaction has to destroy the pixels under a region
+	// (ISO 32000-1, 12.5.6.23) and therefore has to map that region into the
+	// picture's own samples; with only the box it covers, a picture at an angle
+	// would have more of it destroyed than was asked for, which is its own
+	// betrayal. b and c are zero for an upright picture, so this is also how a
+	// caller says "I can only handle the straight ones" and refuses the rest by
+	// name rather than guessing.
+	Matrix [6]float64
 	// Filter is the last filter still on the data: DCTDecode for a JPEG that
 	// comes out as one, JPXDecode for a JPEG 2000, and empty for data this
 	// has unfiltered into plain samples.
@@ -114,6 +127,7 @@ func (e *extractor) noteImage(g *state, name string, dict reader.Dict, raw []byt
 		Y:           minY,
 		DrawnWidth:  maxX - minX,
 		DrawnHeight: maxY - minY,
+		Matrix:      [6]float64{g.ctm.a, g.ctm.b, g.ctm.c, g.ctm.d, g.ctm.e, g.ctm.f},
 		Dict:        dict,
 		Inline:      inline,
 	}

@@ -42,6 +42,75 @@ func TestWhereAPicturePutsItself(t *testing.T) {
 	if im.Dict == nil {
 		t.Error("its dictionary is not there")
 	}
+	// The transform it was drawn with, which is the box above and more: it says
+	// the picture is upright, which the box cannot.
+	if im.Matrix != [6]float64{50, 0, 0, 40, 20, 30} {
+		t.Errorf("its matrix is %v", im.Matrix)
+	}
+}
+
+// TestTheMatrixSaysWhatTheBoxCannot is why Matrix is there: a caller that must
+// map a region of the page into a picture's own samples — a redaction destroying
+// the pixels under it — cannot tell an upright picture from a turned one by the
+// box it covers, and would destroy more of a turned one than was asked for.
+func TestTheMatrixSaysWhatTheBoxCannot(t *testing.T) {
+	for _, c := range []struct {
+		why     string
+		content string
+		want    [6]float64
+		upright bool
+	}{
+		{"upright", "q 50 0 0 40 20 30 cm /Im1 Do Q", [6]float64{50, 0, 0, 40, 20, 30}, true},
+		{"turned a quarter", "q 0 40 -50 0 100 30 cm /Im1 Do Q", [6]float64{0, 40, -50, 0, 100, 30}, false},
+		{"skewed", "q 50 10 0 40 20 30 cm /Im1 Do Q", [6]float64{50, 10, 0, 40, 20, 30}, false},
+		{"flipped, which is still upright", "q 50 0 0 -40 20 70 cm /Im1 Do Q", [6]float64{50, 0, 0, -40, 20, 70}, true},
+	} {
+		d := pageWith(t, c.content, func(w *reader.Writer, res reader.Dict) {
+			res["XObject"] = reader.Dict{"Im1": greyImage(w)}
+		})
+		imgs, err := Images(d, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(imgs) != 1 {
+			t.Fatalf("%s: %d pictures", c.why, len(imgs))
+		}
+		if imgs[0].Matrix != c.want {
+			t.Errorf("%s: the matrix is %v, want %v", c.why, imgs[0].Matrix, c.want)
+		}
+		// b and c zero is the test a caller makes, so it is the test made here.
+		if up := imgs[0].Matrix[1] == 0 && imgs[0].Matrix[2] == 0; up != c.upright {
+			t.Errorf("%s: reads as upright=%v", c.why, up)
+		}
+	}
+}
+
+// TestAPictureInsideAFormCarriesTheWholeChainOfTransforms: a form has a matrix
+// of its own, and a picture inside it is placed by both.
+func TestAPictureInsideAFormCarriesTheWholeChainOfTransforms(t *testing.T) {
+	d := pageWith(t, "q 2 0 0 2 10 10 cm /Fm1 Do Q", func(w *reader.Writer, res reader.Dict) {
+		inner := reader.Dict{"XObject": reader.Dict{"Im1": greyImage(w)}}
+		form := w.Add(&reader.Stream{Dict: reader.Dict{
+			"Type": reader.Name("XObject"), "Subtype": reader.Name("Form"),
+			"BBox":      reader.Array{reader.Integer(0), reader.Integer(0), reader.Integer(100), reader.Integer(100)},
+			"Matrix":    reader.Array{reader.Integer(3), reader.Integer(0), reader.Integer(0), reader.Integer(3), reader.Integer(0), reader.Integer(0)},
+			"Resources": inner,
+		}, Raw: []byte("q 5 0 0 4 1 2 cm /Im1 Do Q")})
+		res["XObject"] = reader.Dict{"Fm1": form}
+	})
+	imgs, err := Images(d, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(imgs) != 1 {
+		t.Fatalf("%d pictures", len(imgs))
+	}
+	// 5x4 inside a form scaled 3 inside a page scaled 2: 30 by 24 points, at
+	// 10 + 2*3*1 = 16 and 10 + 2*3*2 = 22.
+	want := [6]float64{30, 0, 0, 24, 16, 22}
+	if imgs[0].Matrix != want {
+		t.Errorf("the matrix is %v, want %v", imgs[0].Matrix, want)
+	}
 }
 
 func TestAPictureTurnedOnItsSide(t *testing.T) {
