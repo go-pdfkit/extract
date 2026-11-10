@@ -189,7 +189,7 @@ letters.
 [**pdffont**](https://github.com/go-pdfkit/pdffont) is what a document says about a font ·
 [**extract**](https://github.com/go-pdfkit/extract) reads a page back ·
 [**coedit**](https://github.com/go-pdfkit/coedit) is a PDF several people edit at once ·
-[**app**](https://github.com/go-pdfkit/app) is the browser workbench.
+[**playground**](https://github.com/go-pdfkit/playground) is the browser workbench.
 
 Documentation for all of it: <https://go-pdfkit.github.io/docs/>
 
